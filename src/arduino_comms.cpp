@@ -4,21 +4,6 @@
 #include <sstream>
 #include <cstdlib>
 
-#define ENCODER_MAX 16383 // 14-bit absolute encoder range
-#define ENCODER_HALF_RANGE (ENCODER_MAX / 2)
-
-// Helper function to compute delta with wrap-around handling
-long computeDelta(long current, long previous)
-{
-    long delta = current - previous;
-
-    if (delta > ENCODER_HALF_RANGE)
-        delta -= (ENCODER_MAX + 1);
-    else if (delta < -ENCODER_HALF_RANGE)
-        delta += (ENCODER_MAX + 1);
-
-    return delta;
-}
 
 void ArduinoComms::setup(const std::string &serial_device, int32_t baud_rate, int32_t timeout_ms)
 {  
@@ -31,6 +16,7 @@ void ArduinoComms::setup(const std::string &serial_device, int32_t baud_rate, in
 
 }
 
+
 void ArduinoComms::sendEmptyMsg()
 {
     std::string response = sendMsg("\r");
@@ -39,24 +25,14 @@ void ArduinoComms::sendEmptyMsg()
 void ArduinoComms::readEncoderValues(int &val_1, int &val_2)
 {
     std::string response = sendMsg("e\r");
-    
-    if (response.empty())
-    {
-        std::cerr << "Error: No encoder response received!" << std::endl;
-        return;
-    }
 
-    std::stringstream ss(response);
-    int raw_val_1, raw_val_2;
-    ss >> raw_val_1 >> raw_val_2;
+    std::string delimiter = " ";
+    size_t del_pos = response.find(delimiter);
+    std::string token_1 = response.substr(0, del_pos);
+    std::string token_2 = response.substr(del_pos + delimiter.length());
 
-    static int prev_val_1 = raw_val_1, prev_val_2 = raw_val_2;
-
-    val_1 = computeDelta(raw_val_1, prev_val_1);
-    val_2 = computeDelta(raw_val_2, prev_val_2);
-
-    prev_val_1 = raw_val_1;
-    prev_val_2 = raw_val_2;
+    val_1 = std::atoi(token_1.c_str());
+    val_2 = std::atoi(token_2.c_str());
 }
 
 void ArduinoComms::setMotorValues(int val_1, int val_2)

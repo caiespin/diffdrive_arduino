@@ -3,6 +3,21 @@
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 
+#define ENCODER_MAX 16383 // 14-bit absolute encoder range
+#define ENCODER_HALF_RANGE (ENCODER_MAX / 2)
+
+// Compute delta with wrap-around handling
+long computeDelta(long current, long previous)
+{
+    long delta = current - previous;
+
+    if (delta > ENCODER_HALF_RANGE)
+        delta -= (ENCODER_MAX + 1);  // Wrap-around case: Large jump forward
+    else if (delta < -ENCODER_HALF_RANGE)
+        delta += (ENCODER_MAX + 1);  // Wrap-around case: Large jump backward
+
+    return delta;
+}
 
 
 DiffDriveArduino::DiffDriveArduino()
@@ -90,37 +105,41 @@ hardware_interface::CallbackReturn DiffDriveArduino::on_deactivate(const rclcpp_
 hardware_interface::return_type DiffDriveArduino::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-
-  // TODO fix chrono duration
-
   // Calculate time delta
   auto new_time = std::chrono::system_clock::now();
   std::chrono::duration<double> diff = new_time - time_;
   double deltaSeconds = diff.count();
   time_ = new_time;
 
-
   if (!arduino_.connected())
   {
     return return_type::ERROR;
   }
 
-  arduino_.readEncoderValues(l_wheel_.enc, r_wheel_.enc);
+  // Read raw encoder values
+  int l_enc_new, r_enc_new;
+  arduino_.readEncoderValues(l_enc_new, r_enc_new);
 
+  // Compute corrected delta
+  long l_delta = computeDelta(l_enc_new, l_wheel_.enc);
+  long r_delta = computeDelta(r_enc_new, r_wheel_.enc);
+
+  // Store new encoder values
+  l_wheel_.enc = l_enc_new;
+  r_wheel_.enc = r_enc_new;
+
+  // Compute new position and velocity
   double pos_prev = l_wheel_.pos;
-  l_wheel_.pos = l_wheel_.calcEncAngle();
+  l_wheel_.pos += l_delta * l_wheel_.rads_per_count;
   l_wheel_.vel = (l_wheel_.pos - pos_prev) / deltaSeconds;
 
   pos_prev = r_wheel_.pos;
-  r_wheel_.pos = r_wheel_.calcEncAngle();
+  r_wheel_.pos += r_delta * r_wheel_.rads_per_count;
   r_wheel_.vel = (r_wheel_.pos - pos_prev) / deltaSeconds;
 
-
-
   return return_type::OK;
-
-  
 }
+
 
 hardware_interface::return_type DiffDriveArduino::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
